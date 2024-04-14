@@ -1,18 +1,18 @@
 #include <math.h>
 #include "raylib.h"
 
-#define BOARD_WIDTH 9
+#define BOARD_WIDTH (9)
 #define BOARD_SIZE (BOARD_WIDTH * BOARD_WIDTH)
 
-#define TILE_SIZE 128
+#define TILE_SIZE (128)
 #define TILE_CENTER (TILE_SIZE / 2)
 #define BOX_SIZE (TILE_SIZE / 3)
-#define BOARD_PADDING 16
+#define BOARD_PADDING (16)
 
 #define BOARD_TEXTURE_WIDTH (BOARD_WIDTH * TILE_SIZE + BOARD_PADDING * 2)
 
-#define SCREEN_WIDTH 800
-#define SCREEN_HEIGHT 800
+#define SCREEN_WIDTH (800)
+#define SCREEN_HEIGHT (800)
 
 static float screen_scale = SCREEN_WIDTH / (float) BOARD_TEXTURE_WIDTH;
 
@@ -167,6 +167,8 @@ void draw_tile(int x, int y) {
 
         // If the user clicks on a subtile,
         // collapse the tile to the value of the subtile.
+        // NOTE: I would like if this were handled in the main loop instead,
+        // but I already had the tile positions available here.
         if (is_hovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             collapse_tile(x, y, bit);
         }
@@ -183,82 +185,102 @@ void draw_board(void) {
     // Draw thicker lines to separate the 3x3 boxes.
     for (int i = 0; i <= BOARD_WIDTH; i += 3) {
         Rectangle rect = {
-            BOARD_PADDING,
-            BOARD_PADDING + i * TILE_SIZE,
-            BOARD_WIDTH * TILE_SIZE,
-            6
+            BOARD_PADDING, BOARD_PADDING + i * TILE_SIZE,
+            BOARD_WIDTH * TILE_SIZE, 6
         };
         DrawRectangleLinesEx(rect, 6, BLACK);
 
         rect = (Rectangle) {
-            BOARD_PADDING + i * TILE_SIZE,
-            BOARD_PADDING,
-            6,
-            BOARD_WIDTH * TILE_SIZE
+            BOARD_PADDING + i * TILE_SIZE, BOARD_PADDING,
+            6, BOARD_WIDTH * TILE_SIZE
         };
         DrawRectangleLinesEx(rect, 6, BLACK);
     }
 }
 
-void update(void) {
-}
-
 int main(void) {
     int width = SCREEN_WIDTH;
     int height = SCREEN_HEIGHT;
-    const char *title = "Sudoku WFC";
+
     SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
-    InitWindow(width, height, title);
+    InitWindow(width, height, "Sudoku WFC");
     SetTargetFPS(60);
 
+    // Initialize the tiles to be a superposition of 1-9.
     reset_tiles();
 
-    screen_scale = width / (float) BOARD_TEXTURE_WIDTH;
+    // Create a render texture to draw the board to.
     RenderTexture2D board_texture = LoadRenderTexture(BOARD_TEXTURE_WIDTH, BOARD_TEXTURE_WIDTH);
 
+    // The source rectangle is the size of the board texture.
+    // The height component is negative because OpenGL's coordinate system
+    // uses the bottom-left corner as the origin instead of the top-left.
     Rectangle source = { 0, 0, BOARD_TEXTURE_WIDTH, -BOARD_TEXTURE_WIDTH };
-    Rectangle dest = { screen_scale, screen_scale, width, height };
 
-    Camera2D board_camera = { 0 };
-    board_camera.zoom = 1.f;
+    // The destination rectangle is the entire size of the window.
+    Rectangle dest = { 0, 0, width, height };
 
-    Camera2D screen_camera = { 0 };
-    screen_camera.zoom = 1.f;
+    // Camera2D objects to handle zooming and panning.
+    // In this case, they don't do anything special besides being the target of the render textures.
+    Camera2D board_camera = { .zoom = 1.f };
+    Camera2D screen_camera = { .zoom = 1.f };
 
     while (!WindowShouldClose()) {
         // Update the title to contain the time it took to show the last frame.
         float frame_ms = GetFrameTime() * 1000.f;
         SetWindowTitle(TextFormat("Sudoku WFC - %.2f ms/frame", frame_ms));
 
+        // If the window is resized, adjust the render texture's size,
+        // and update the destination rectangle to fit the new window size.
         if (IsWindowResized()) {
+            // Get the new window size.
             width = GetScreenWidth();
             height = GetScreenHeight();
+
+            // Ideally I would just center the board in the window,
+            // and scale it to fit the smallest window dimension,
+            // but for now I'll just force the window to be square.
+
+            // Get the smallest window dimension.
             int min_size = width < height ? width : height;
+
+            // Set the window size to be square with the window's smallest dimension.
             SetWindowSize(min_size, min_size);
+
+            // Get the new window size again,
+            // because It was just changed to be square.
             width = GetScreenWidth();
             height = GetScreenHeight();
+
+            // Update the screen scale and destination rectangle.
             screen_scale = width / (float) BOARD_TEXTURE_WIDTH;
-            dest = (Rectangle) { screen_scale, screen_scale, width, height };
+            dest = (Rectangle) { 0, 0, width, height };
         }
 
+        // Start drawing to the render texture.
         BeginTextureMode(board_texture);
+            // Draw the board to the render texture.
             BeginMode2D(board_camera);
                 ClearBackground(RAYWHITE);
                 draw_board();
             EndMode2D();
         EndTextureMode();
 
-
+        // Start drawing to the window.
         BeginDrawing();
             ClearBackground(RAYWHITE);
+            // Draw the render texture to the window.
             BeginMode2D(screen_camera);
                 DrawTexturePro(board_texture.texture, source, dest, (Vector2) { 0, 0 }, 0, WHITE);
             EndMode2D();
-            if (IsKeyPressed(KEY_Z)) undo_tiles();
-            if (IsKeyPressed(KEY_R)) reset_tiles();
         EndDrawing();
+
+        // Handle user input.
+        if (IsKeyPressed(KEY_Z)) undo_tiles();
+        if (IsKeyPressed(KEY_R)) reset_tiles();
     }
 
+    // Release the render texture and close the window.
     UnloadRenderTexture(board_texture);
     CloseWindow();
 
