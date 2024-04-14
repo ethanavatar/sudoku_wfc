@@ -1,5 +1,5 @@
 CC=clang
-CFLAGS=-Wall -Wextra -Werror -Wpedantic -std=c23 -O3 -g
+CFLAGS=-Wall -Wextra -Werror -Wpedantic -std=c99 -O3 -g
 OUT_DIR=bin
 
 RAYLIB_SRC=raylib/src
@@ -11,18 +11,18 @@ WINDOWS_LIBS=-lgdi32 -lwinmm
 
 .PHONY: all clean run raylib raylib_clean
 
+all: raylib
+	mkdir -p $(OUT_DIR)
+	$(CC) $(CFLAGS) -I$(RAYLIB_INC) -L$(RAYLIB_SRC) -o $(OUT_DIR)/sudoku_wfc sudoku_wfc.c $(LINK_FLAGS) $(WINDOWS_LIBS)
+
+run: all
+	$(OUT_DIR)/main
+
 raylib:
 	cd $(RAYLIB_SRC) && make $(RAYLIB_MAKE_FLAGS)
 
 raylib_clean:
 	cd $(RAYLIB_SRC) && make clean
-
-all: raylib
-	mkdir -p $(OUT_DIR)
-	$(CC) $(CFLAGS) -I$(RAYLIB_INC) -L$(RAYLIB_SRC) -o $(OUT_DIR)/main main.c $(LINK_FLAGS) $(WINDOWS_LIBS)
-
-run: all
-	$(OUT_DIR)/main
 
 clean: raylib_clean
 	rm -rf $(OUT_DIR)
