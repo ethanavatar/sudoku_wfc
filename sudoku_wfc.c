@@ -9,8 +9,12 @@
 #define BOX_SIZE (TILE_SIZE / 3)
 #define BOARD_PADDING 16
 
-#define SCREEN_WIDTH (BOARD_WIDTH * TILE_SIZE + BOARD_PADDING * 2)
+#define BOARD_TEXTURE_WIDTH (BOARD_WIDTH * TILE_SIZE + BOARD_PADDING * 2)
 
+#define SCREEN_WIDTH 800
+#define SCREEN_HEIGHT 800
+
+static float screen_scale = SCREEN_WIDTH / (float) BOARD_TEXTURE_WIDTH;
 
 // The tiles are each stored as an integer,
 // with the first 9 bits representing its superpositions.
@@ -148,8 +152,12 @@ void draw_tile(int x, int y) {
             BOX_SIZE, BOX_SIZE
         };
 
-        // Highlight the subtile if the mouse is hovering over it.
+        // Get the mouse position, scaled according to the screen scale.
         Vector2 mouse_pos = GetMousePosition();
+        mouse_pos.x /= screen_scale;
+        mouse_pos.y /= screen_scale;
+
+        // Highlight the subtile if the mouse is hovering over it.
         bool is_hovered = CheckCollisionPointRec(mouse_pos, subtile_rect);
         if (is_hovered) DrawRectangleRec(subtile_rect, LIGHTGRAY);
 
@@ -193,26 +201,65 @@ void draw_board(void) {
 }
 
 void update(void) {
-    // Update the title to contain the time it took to show the last frame.
-    float frame_ms = GetFrameTime() * 1000.f;
-    SetWindowTitle(TextFormat("Sudoku WFC - %.2f ms/frame", frame_ms));
-
-    BeginDrawing();
-        ClearBackground(RAYWHITE);
-        draw_board();
-        if (IsKeyPressed(KEY_Z)) undo_tiles();
-        if (IsKeyPressed(KEY_R)) reset_tiles();
-    EndDrawing();
 }
 
 int main(void) {
+    int width = SCREEN_WIDTH;
+    int height = SCREEN_HEIGHT;
     const char *title = "Sudoku WFC";
-    InitWindow(SCREEN_WIDTH, SCREEN_WIDTH, title);
+    SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
+    InitWindow(width, height, title);
     SetTargetFPS(60);
 
     reset_tiles();
 
-    while (!WindowShouldClose()) update();
+    screen_scale = width / (float) BOARD_TEXTURE_WIDTH;
+    RenderTexture2D board_texture = LoadRenderTexture(BOARD_TEXTURE_WIDTH, BOARD_TEXTURE_WIDTH);
+
+    Rectangle source = { 0, 0, BOARD_TEXTURE_WIDTH, -BOARD_TEXTURE_WIDTH };
+    Rectangle dest = { screen_scale, screen_scale, width, height };
+
+    Camera2D board_camera = { 0 };
+    board_camera.zoom = 1.f;
+
+    Camera2D screen_camera = { 0 };
+    screen_camera.zoom = 1.f;
+
+    while (!WindowShouldClose()) {
+        // Update the title to contain the time it took to show the last frame.
+        float frame_ms = GetFrameTime() * 1000.f;
+        SetWindowTitle(TextFormat("Sudoku WFC - %.2f ms/frame", frame_ms));
+
+        if (IsWindowResized()) {
+            width = GetScreenWidth();
+            height = GetScreenHeight();
+            int min_size = width < height ? width : height;
+            SetWindowSize(min_size, min_size);
+            width = GetScreenWidth();
+            height = GetScreenHeight();
+            screen_scale = width / (float) BOARD_TEXTURE_WIDTH;
+            dest = (Rectangle) { screen_scale, screen_scale, width, height };
+        }
+
+        BeginTextureMode(board_texture);
+            BeginMode2D(board_camera);
+                ClearBackground(RAYWHITE);
+                draw_board();
+            EndMode2D();
+        EndTextureMode();
+
+
+        BeginDrawing();
+            ClearBackground(RAYWHITE);
+            BeginMode2D(screen_camera);
+                DrawTexturePro(board_texture.texture, source, dest, (Vector2) { 0, 0 }, 0, WHITE);
+            EndMode2D();
+            if (IsKeyPressed(KEY_Z)) undo_tiles();
+            if (IsKeyPressed(KEY_R)) reset_tiles();
+        EndDrawing();
+    }
+
+    UnloadRenderTexture(board_texture);
     CloseWindow();
 
     return 0;
