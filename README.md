@@ -2,15 +2,11 @@
 
 A visual demonstration of the wave function collapse algorithm applied to a Sudoku board.
 
-## Demo
-
-Keys:
-- `R` - Reset the board
-- `Z` - Undo the last action (only 1 level of undo)
-
-![Demo](./demo/sudoku_wfc_2x_24fps.mp4)
-
 ## Usage
+
+Requires:
+- `clang` or another C compiler (change the `CC` variable in the `Makefile` if necessary)
+- `make`
 
 Clone the repository recursively to include the submodules.
 
@@ -22,21 +18,14 @@ $ git clone --recursive
 $ git clone --recurse-submodules
 ```
 
-Use `make` to build the program and its dependencies:
-
-```bash
-$ make all
-```
-
-Run the program:
-
-```bash
-$ ./bin/sudoku
-```
-
-or:
+Use `make` to build and run the program.
 
 ```bash
 $ make run
 ```
 
+Keys:
+- `R` - Reset the board
+- `Z` - Undo the last action (only 1 level of undo)
+
+![Example](./images/example.png)
