@@ -27,5 +27,6 @@ $ make run
 Keys:
 - `R` - Reset the board
 - `Z` - Undo the last action (only 1 level of undo)
+- `S` - Solve the board
 
 ![Example](./images/example.png)

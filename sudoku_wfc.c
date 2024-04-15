@@ -1,20 +1,26 @@
 #include <math.h>
+#include <time.h>
 #include "raylib.h"
+
+// Sudoku tiles have 9 possible states.
+#define TILE_STATES (9)
 
 #define BOARD_WIDTH (9)
 #define BOARD_SIZE (BOARD_WIDTH * BOARD_WIDTH)
+#define BOARD_PADDING (16)
 
 #define TILE_SIZE (128)
 #define TILE_CENTER (TILE_SIZE / 2)
 #define BOX_SIZE (TILE_SIZE / 3)
-#define BOARD_PADDING (16)
 
-#define BOARD_TEXTURE_WIDTH (BOARD_WIDTH * TILE_SIZE + BOARD_PADDING * 2)
+#define BOARD_TEXTURE_SIZE (BOARD_WIDTH * TILE_SIZE + BOARD_PADDING * 2)
 
 #define SCREEN_WIDTH (800)
 #define SCREEN_HEIGHT (800)
 
-static float screen_scale = SCREEN_WIDTH / (float) BOARD_TEXTURE_WIDTH;
+// The factor by which the board texture is scaled to fit the window.
+// The board texture is constant, but the window is resizable.
+static float screen_scale = SCREEN_WIDTH / (float) BOARD_TEXTURE_SIZE;
 
 // The tiles are each stored as an integer,
 // with the first 9 bits representing its superpositions.
@@ -46,22 +52,50 @@ int *get_tile(int x, int y) {
     return &tiles[y * BOARD_WIDTH + x];
 }
 
-// Check if a tile's superpositions only contain one value.
-bool is_collapsed(int x, int y) {
-    int value = *get_tile(x, y);
-    return (value & (value - 1)) == 0;
-}
-
+// Check if a specific bit in a tile is set.
 bool is_set(int x, int y, int bit) {
     return *get_tile(x, y) & (1 << bit);
 }
 
+// The entropy of a tile is the number of superpositions it has.
+// This is the number of bits set in the tile's integer value.
+// This function doesnt take x and y because
+// it makes iterating through the tiles slightly easier (see solve_board).
+int get_tile_entropy(int i) {
+    int x = i % BOARD_WIDTH;
+    int y = i / BOARD_WIDTH;
+    int entropy = 0;
+    for (int i = 0; i < TILE_STATES; ++i) {
+        entropy += is_set(x, y, i);
+    }
+    return entropy;
+}
+
+int get_board_entropy(void) {
+    int entropy = 0;
+    for (int i = 0; i < BOARD_SIZE; ++i) {
+        entropy += get_tile_entropy(i);
+    }
+    return entropy;
+}
+
+// Check if a tile's superpositions only contain one value.
+bool is_collapsed(int x, int y) {
+    return get_tile_entropy(x + y * BOARD_WIDTH) == 1;
+}
+
 // Get the value of a collapsed tile.
 int get_collapsed_value(int x, int y) {
-    // Using log2 gets the index of the set bit
+    int value = *get_tile(x, y);
+    // This mask is the first 9 bits set to 1.
+    // This is used because the integer value can be larger than 9 bits
+    // and if it is, anything above the first 9 bits should be ignored.
+    int mask = (1 << TILE_STATES) - 1;
+
+    // log2 gets the index of the set bit
     // because a binary number with only one bit set
     // is some power of 2.
-    return (int) log2(*get_tile(x, y));
+    return (int) log2(value & mask);
 }
 
 // Forwards declaration for recursion.
@@ -77,7 +111,7 @@ void constrain_tile(int x, int y, int value) {
     if (is_collapsed(x, y)) constrain_peers(x, y, get_collapsed_value(x, y));
 }
 
-// Constrain the superpositions of a tile's peers by removing a possible value.
+// Constrain a tile's peers by removing a superposition.
 void constrain_peers(int x, int y, int value) {
     // Constrain the row and column that the tile belongs to.
     for (int i = 0; i < BOARD_WIDTH; ++i) {
@@ -121,6 +155,50 @@ void collapse_tile(int x, int y, int value) {
     constrain_peers(x, y, value);
 }
 
+// Solve the board by recusively collapsing the tile with the least entropy.
+// Entropy, in this case, is the number of superpositions a tile has.
+void solve_board(void) {
+    // If the board entropy is the same as the size of the board,
+    // every tile has been collapsed to a single value, and the board is solved.
+    if (get_board_entropy() == BOARD_SIZE) return;
+
+    int sorted_tiles[BOARD_SIZE];
+    for (int i = 0; i < BOARD_SIZE; ++i) sorted_tiles[i] = i;
+
+    // Sort the tiles by entropy.
+    for (int i = 0; i < BOARD_SIZE; ++i) {
+        for (int j = i + 1; j < BOARD_SIZE; ++j) {
+            int a = get_tile_entropy(sorted_tiles[i]);
+            int b = get_tile_entropy(sorted_tiles[j]);
+            if (a <= b) continue;
+
+            int temp = sorted_tiles[i];
+            sorted_tiles[i] = sorted_tiles[j];
+            sorted_tiles[j] = temp;
+        }
+    }
+
+    // Find the first tile in the sorted array that is not collapsed.
+    for (int i = 0; i < BOARD_SIZE; ++i) {
+        int tile = sorted_tiles[i];
+        int x = tile % BOARD_WIDTH;
+        int y = tile / BOARD_WIDTH;
+        if (is_collapsed(x, y)) continue;
+
+        // Find a random value that is in the tile's superpositions.
+        int value = GetRandomValue(0, TILE_STATES - 1);
+        while (!is_set(x, y, value)) {
+            value = (value + 1) % TILE_STATES;
+        }
+
+        // Collapse the tile to the random value.
+        collapse_tile(x, y, value);
+    }
+
+    // Recursively solve the rest of the board.
+    solve_board();
+}
+
 // Draw a tile at a given board position.
 void draw_tile(int x, int y) {
     int tile_x = x * TILE_SIZE + BOARD_PADDING;
@@ -131,16 +209,16 @@ void draw_tile(int x, int y) {
 
     // If the tile is collapsed, draw the collapsed value at the center.
     if (is_collapsed(x, y)) {
-        int tile_x_center = tile_x + TILE_CENTER;
-        int tile_y_center = tile_y + TILE_CENTER;
+        int x_center = tile_x + TILE_CENTER;
+        int y_center = tile_y + TILE_CENTER;
         const char *text = TextFormat("%d", get_collapsed_value(x, y) + 1);
         int text_width = MeasureText(text, 48);
-        DrawText(text, tile_x_center - text_width / 2, tile_y_center - 24, 48, BLACK);
+        DrawText(text, x_center - text_width / 2, y_center - 24, 48, BLACK);
         return;
     }
 
     // If the tile is not collapsed, draw the remaining superpositions.
-    for (int bit = 0; bit < 9; ++bit) {
+    for (int bit = 0; bit < TILE_STATES; ++bit) {
         // Do not draw the superposition if it is not set.
         if (!is_set(x, y, bit)) continue;
 
@@ -199,6 +277,8 @@ void draw_board(void) {
 }
 
 int main(void) {
+    SetRandomSeed(time(0));
+
     int width = SCREEN_WIDTH;
     int height = SCREEN_HEIGHT;
 
@@ -206,24 +286,28 @@ int main(void) {
     InitWindow(width, height, "Sudoku WFC");
     SetTargetFPS(60);
 
-    // Initialize the tiles to be a superposition of 1-9.
+    // Initialize the tiles to potentially be any number.
     reset_tiles();
 
     // Create a render texture to draw the board to.
-    RenderTexture2D board_texture = LoadRenderTexture(BOARD_TEXTURE_WIDTH, BOARD_TEXTURE_WIDTH);
+    int board_size = BOARD_TEXTURE_SIZE;
+    RenderTexture2D board = LoadRenderTexture(board_size, board_size);
 
     // The source rectangle is the size of the board texture.
     // The height component is negative because OpenGL's coordinate system
     // uses the bottom-left corner as the origin instead of the top-left.
-    Rectangle source = { 0, 0, BOARD_TEXTURE_WIDTH, -BOARD_TEXTURE_WIDTH };
+    Rectangle source = { 0, 0, BOARD_TEXTURE_SIZE, -BOARD_TEXTURE_SIZE };
 
     // The destination rectangle is the entire size of the window.
-    Rectangle dest = { 0, 0, width, height };
+    Rectangle destination = { 0, 0, width, height };
 
     // Camera2D objects to handle zooming and panning.
-    // In this case, they don't do anything special besides being the target of the render textures.
+    // In this case, they don't do anything special
+    // besides being the target of the render textures.
     Camera2D board_camera = { .zoom = 1.f };
     Camera2D screen_camera = { .zoom = 1.f };
+
+    static const Vector2 origin = { 0, 0 };
 
     while (!WindowShouldClose()) {
         // Update the title to contain the time it took to show the last frame.
@@ -244,7 +328,8 @@ int main(void) {
             // Get the smallest window dimension.
             int min_size = width < height ? width : height;
 
-            // Set the window size to be square with the window's smallest dimension.
+            // Set the window size to be square
+            // with the window's smallest dimension.
             SetWindowSize(min_size, min_size);
 
             // Get the new window size again,
@@ -253,12 +338,12 @@ int main(void) {
             height = GetScreenHeight();
 
             // Update the screen scale and destination rectangle.
-            screen_scale = width / (float) BOARD_TEXTURE_WIDTH;
-            dest = (Rectangle) { 0, 0, width, height };
+            screen_scale = width / (float) BOARD_TEXTURE_SIZE;
+            destination = (Rectangle) { 0, 0, width, height };
         }
 
         // Start drawing to the render texture.
-        BeginTextureMode(board_texture);
+        BeginTextureMode(board);
             // Draw the board to the render texture.
             BeginMode2D(board_camera);
                 ClearBackground(RAYWHITE);
@@ -271,17 +356,26 @@ int main(void) {
             ClearBackground(RAYWHITE);
             // Draw the render texture to the window.
             BeginMode2D(screen_camera);
-                DrawTexturePro(board_texture.texture, source, dest, (Vector2) { 0, 0 }, 0, WHITE);
+                DrawTexturePro(
+                    board.texture,
+                    source, destination,
+                    origin, 0,
+                    WHITE
+                );
             EndMode2D();
         EndDrawing();
 
         // Handle user input.
         if (IsKeyPressed(KEY_Z)) undo_tiles();
         if (IsKeyPressed(KEY_R)) reset_tiles();
+        if (IsKeyPressed(KEY_S)) {
+            if (get_board_entropy() == BOARD_SIZE) reset_tiles();
+            solve_board();
+        }
     }
 
     // Release the render texture and close the window.
-    UnloadRenderTexture(board_texture);
+    UnloadRenderTexture(board);
     CloseWindow();
 
     return 0;
